@@ -1,211 +1,266 @@
-import Head from 'next/head'
-import Image from 'next/image'
+import Head from 'next/head';
+import React, { useEffect, useRef } from 'react';
+import { mat4 } from 'gl-matrix';
+import vertex from '../shaders/vertex.glsl';
+import fragment from '../shaders/fragment.glsl';
 
-export const Home = (): JSX.Element => (
-  <div className="container">
-    <Head>
-      <title>Create Next App</title>
-      <link rel="icon" href="/favicon.ico" />
-    </Head>
+interface ProgramInfo {
+  program: WebGLProgram,
+  attribLocations: {
+    vertexPosition: number,
+    vertexColor: number
+  },
+  uniformLocations: {
+    projectionMatrix: WebGLUniformLocation,
+    modelViewMatrix: WebGLUniformLocation,
+  },
+}
 
-    <main>
-      <h1 className="title">
-        Welcome to <a href="https://nextjs.org">Next.js!</a>
-      </h1>
+interface Buffers {
+  position: WebGLBuffer,
+  color: WebGLBuffer
+}
 
-      <p className="description">
-        Get started by editing <code>pages/index.tsx</code>
-      </p>
+//
+// creates a shader of the given type, uploads the source and
+// compiles it.
+//
+function loadShader(gl : WebGLRenderingContext, type : number, source : string) {
+  const shader = gl.createShader(type);
+  // Send the source to the shader object
 
-      <button
-        onClick={() => {
-          window.alert('With typescript and Jest')
-        }}
-      >
-        Test Button
-      </button>
+  gl.shaderSource(shader, source);
+  // Compile the shader program
 
-      <div className="grid">
-        <a href="https://nextjs.org/docs" className="card">
-          <h3>Documentation &rarr;</h3>
-          <p>Find in-depth information about Next.js features and API.</p>
-        </a>
+  gl.compileShader(shader);
+  // See if it compiled successfully
 
-        <a href="https://nextjs.org/learn" className="card">
-          <h3>Learn &rarr;</h3>
-          <p>Learn about Next.js in an interactive course with quizzes!</p>
-        </a>
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.log(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
+    gl.deleteShader(shader);
+    return null;
+  }
 
-        <a
-          href="https://github.com/vercel/next.js/tree/master/examples"
-          className="card"
-        >
-          <h3>Examples &rarr;</h3>
-          <p>Discover and deploy boilerplate example Next.js projects.</p>
-        </a>
+  return shader;
+}
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          className="card"
-        >
-          <h3>Deploy &rarr;</h3>
-          <p>Instantly deploy your Next.js site to a public URL with Vercel.</p>
-        </a>
-      </div>
-    </main>
+const initShaderProgram = (gl : WebGLRenderingContext, vsSource : string, fsSource : string) => {
+  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
 
-    <footer>
-      <a
-        href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Powered by{' '}
-        <Image src="/vercel.svg" alt="Vercel Logo" height={'32'} width={'64'} />
-      </a>
-    </footer>
+  // Create the shader program
+  const shaderProgram = gl.createProgram();
+  gl.attachShader(shaderProgram, vertexShader);
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
 
-    <style jsx>{`
-      .container {
-        min-height: 100vh;
-        padding: 0 0.5rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-      }
+  // If creating the shader program failed, alert
+  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+    console.log(`Unable to initialize the shader program: ${gl.getProgramInfoLog(shaderProgram)}`);
+    return null;
+  }
 
-      main {
-        padding: 5rem 0;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-      }
+  return shaderProgram;
+};
 
-      footer {
-        width: 100%;
-        height: 100px;
-        border-top: 1px solid #eaeaea;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
+function initBuffers(gl : WebGLRenderingContext) : Buffers {
+  // Create a buffer for the square's positions.
+  const positionBuffer = gl.createBuffer();
 
-      footer img {
-        margin-left: 0.5rem;
-      }
+  // Select the positionBuffer as the one to apply buffer
+  // operations to from here out.
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
-      footer a {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
+  // Now create an array of positions for the square.
+  const positions = [
+    1.0, 1.0,
+    -1.0, 1.0,
+    1.0, -1.0,
+    -1.0, -1.0,
+  ];
 
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
+  // Now pass the list of positions into WebGL to build the
+  // shape. We do this by creating a Float32Array from the
+  // JavaScript array, then use it to fill the current buffer.
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array(positions),
+    gl.STATIC_DRAW,
+  );
 
-      .title a {
-        color: #0070f3;
-        text-decoration: none;
-      }
+  const colorBuffer = gl.createBuffer();
 
-      .title a:hover,
-      .title a:focus,
-      .title a:active {
-        text-decoration: underline;
-      }
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
 
-      .title {
-        margin: 0;
-        line-height: 1.15;
-        font-size: 4rem;
-      }
+  const colors = [
+    1.0, 1.0, 1.0, 1.0, // white
+    1.0, 0.0, 0.0, 1.0, // red
+    0.0, 1.0, 0.0, 1.0, // green
+    0.0, 0.0, 1.0, 1.0, // blue
+  ];
 
-      .title,
-      .description {
-        text-align: center;
-      }
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array(colors),
+    gl.STATIC_DRAW,
+  );
 
-      .description {
-        line-height: 1.5;
-        font-size: 1.5rem;
-      }
+  return {
+    position: positionBuffer,
+    color: colorBuffer,
+  };
+}
 
-      code {
-        background: #fafafa;
-        border-radius: 5px;
-        padding: 0.75rem;
-        font-size: 1.1rem;
-        font-family: Menlo, Monaco, Lucida Console, Liberation Mono,
-          DejaVu Sans Mono, Bitstream Vera Sans Mono, Courier New, monospace;
-      }
+function drawScene(gl : WebGLRenderingContext, programInfo : ProgramInfo, buffers : Buffers) {
+  gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
+  gl.clearDepth(1.0); // Clear everything
+  gl.enable(gl.DEPTH_TEST); // Enable depth testing
+  gl.depthFunc(gl.LEQUAL); // Near things obscure far things
 
-      .grid {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-wrap: wrap;
+  // Clear the canvas before we start drawing on it.
 
-        max-width: 800px;
-        margin-top: 3rem;
-      }
+  // eslint-disable-next-line no-bitwise
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      .card {
-        margin: 1rem;
-        flex-basis: 45%;
-        padding: 1.5rem;
-        text-align: left;
-        color: inherit;
-        text-decoration: none;
-        border: 1px solid #eaeaea;
-        border-radius: 10px;
-        transition: color 0.15s ease, border-color 0.15s ease;
-      }
+  // Create a perspective matrix, a special matrix that is
+  // used to simulate the distortion of perspective in a camera.
+  // Our field of view is 45 degrees, with a width/height
+  // ratio that matches the display size of the canvas
+  // and we only want to see objects between 0.1 units
+  // and 100 units away from the camera.
 
-      .card:hover,
-      .card:focus,
-      .card:active {
-        color: #0070f3;
-        border-color: #0070f3;
-      }
+  const fieldOfView = (45 * Math.PI) / 180; // in radians
+  const aspect = gl.canvas.width / gl.canvas.height;
+  const zNear = 0.1;
+  const zFar = 100.0;
+  const projectionMatrix = mat4.create();
 
-      .card h3 {
-        margin: 0 0 1rem 0;
-        font-size: 1.5rem;
-      }
+  // note: glmatrix.js always has the first argument
+  // as the destination to receive the result.
+  mat4.perspective(projectionMatrix,
+    fieldOfView,
+    aspect,
+    zNear,
+    zFar);
 
-      .card p {
-        margin: 0;
-        font-size: 1.25rem;
-        line-height: 1.5;
-      }
+  // Set the drawing position to the "identity" point, which is
+  // the center of the scene.
+  const modelViewMatrix = mat4.create();
 
-      @media (max-width: 600px) {
-        .grid {
-          width: 100%;
-          flex-direction: column;
-        }
-      }
-    `}</style>
+  // Now move the drawing position a bit to where we want to
+  // start drawing the square.
 
-    <style jsx global>{`
-      html,
-      body {
-        padding: 0;
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-          Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
-      }
+  mat4.translate(modelViewMatrix, // destination matrix
+    modelViewMatrix, // matrix to translate
+    [-0.0, 0.0, -6.0]); // amount to translate
 
-      * {
-        box-sizing: border-box;
-      }
-    `}</style>
-  </div>
-)
+  // Tell WebGL how to pull out the positions from the position
+  // buffer into the vertexPosition attribute.
+  {
+    const numComponents = 2; // pull out 2 values per iteration
+    const type = gl.FLOAT; // the data in the buffer is 32bit floats
+    const normalize = false; // don't normalize
+    const stride = 0; // how many bytes to get from one set of values to the next
+    // 0 = use type and numComponents above
+    const offset = 0; // how many bytes inside the buffer to start from
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.vertexPosition,
+      numComponents,
+      type,
+      normalize,
+      stride,
+      offset,
+    );
+    gl.enableVertexAttribArray(
+      programInfo.attribLocations.vertexPosition,
+    );
+  }
 
-export default Home
+  {
+    const numComponents = 4; // pull out 2 values per iteration
+    const type = gl.FLOAT; // the data in the buffer is 32bit floats
+    const normalize = false; // don't normalize
+    const stride = 0; // how many bytes to get from one set of values to the next
+    // 0 = use type and numComponents above
+    const offset = 0; // how many bytes inside the buffer to start from
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.vertexColor,
+      numComponents,
+      type,
+      normalize,
+      stride,
+      offset,
+    );
+    gl.enableVertexAttribArray(
+      programInfo.attribLocations.vertexColor,
+    );
+  }
+
+  // Tell WebGL to use our program when drawing
+
+  gl.useProgram(programInfo.program);
+
+  // Set the shader uniforms
+
+  gl.uniformMatrix4fv(
+    programInfo.uniformLocations.projectionMatrix,
+    false,
+    projectionMatrix,
+  );
+  gl.uniformMatrix4fv(
+    programInfo.uniformLocations.modelViewMatrix,
+    false,
+    modelViewMatrix,
+  );
+
+  {
+    const offset = 0;
+    const vertexCount = 4;
+    gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
+  }
+}
+
+const Home = () => {
+  const canvas = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    // Initialize the GL context
+    const gl = canvas.current.getContext('webgl');
+
+    const shaderProgram = initShaderProgram(gl, vertex, fragment);
+
+    const programInfo = {
+      program: shaderProgram,
+      attribLocations: {
+        vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+        vertexColor: gl.getAttribLocation(shaderProgram, 'aVertexColor'),
+      },
+      uniformLocations: {
+        projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
+        modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
+      },
+    };
+
+    const buffers = initBuffers(gl);
+
+    drawScene(gl, programInfo, buffers);
+
+    canvas.current.onclick = ({ offsetX, offsetY }) => {
+      console.log(offsetX);
+      console.log(offsetY);
+    };
+  });
+
+  return (
+    <>
+      <Head>
+        <title>GLSL testing</title>
+      </Head>
+      <canvas ref={canvas} width="640" height="480" />
+    </>
+  );
+};
+
+export default Home;
