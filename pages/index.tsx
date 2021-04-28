@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { mat4 } from 'gl-matrix';
 import vertex from '../shaders/vertex.glsl';
 import fragment from '../shaders/fragment.glsl';
@@ -25,9 +25,19 @@ interface Buffers {
 // creates a shader of the given type, uploads the source and
 // compiles it.
 //
-function loadShader(gl : WebGLRenderingContext, type : number, source : string) {
+function loadShader(
+  gl : WebGLRenderingContext,
+  type : number,
+  source : string,
+  setError : (error: string) => void,
+) : WebGLShader | null {
   const shader = gl.createShader(type);
   // Send the source to the shader object
+
+  if (!shader) {
+    setError("Can't add that type of shade");
+    return null;
+  }
 
   gl.shaderSource(shader, source);
   // Compile the shader program
@@ -36,7 +46,7 @@ function loadShader(gl : WebGLRenderingContext, type : number, source : string) 
   // See if it compiled successfully
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.log(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
+    setError(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
     gl.deleteShader(shader);
     return null;
   }
@@ -44,28 +54,41 @@ function loadShader(gl : WebGLRenderingContext, type : number, source : string) 
   return shader;
 }
 
-const initShaderProgram = (gl : WebGLRenderingContext, vsSource : string, fsSource : string) => {
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+const initShaderProgram = (
+  gl : WebGLRenderingContext,
+  vsSource : string, fsSource : string,
+  setError : (error: string) => void,
+) => {
+  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource, setError);
+  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource, setError);
+
+  if (!vertexShader || !fragmentShader) return null;
 
   // Create the shader program
   const shaderProgram = gl.createProgram();
+
+  if (!shaderProgram) {
+    setError('Couldn\'t create shader program');
+    return null;
+  }
+
   gl.attachShader(shaderProgram, vertexShader);
   gl.attachShader(shaderProgram, fragmentShader);
   gl.linkProgram(shaderProgram);
 
   // If creating the shader program failed, alert
   if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    console.log(`Unable to initialize the shader program: ${gl.getProgramInfoLog(shaderProgram)}`);
+    setError(`Unable to initialize the shader program: ${gl.getProgramInfoLog(shaderProgram)}`);
     return null;
   }
 
   return shaderProgram;
 };
 
-function initBuffers(gl : WebGLRenderingContext) : Buffers {
+function initBuffers(gl : WebGLRenderingContext) : Buffers | null {
   // Create a buffer for the square's positions.
   const positionBuffer = gl.createBuffer();
+  if (!positionBuffer) return null;
 
   // Select the positionBuffer as the one to apply buffer
   // operations to from here out.
@@ -89,6 +112,7 @@ function initBuffers(gl : WebGLRenderingContext) : Buffers {
   );
 
   const colorBuffer = gl.createBuffer();
+  if (!colorBuffer) return null;
 
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
 
@@ -222,36 +246,69 @@ function drawScene(gl : WebGLRenderingContext, programInfo : ProgramInfo, buffer
   }
 }
 
+let i = 0;
+const getUnique = () => { i += 1; return i; };
+
 const Home = () => {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [errorList, setError] = useState<string[]>([]);
+
+  const addError = (error : string) => {
+    setError((state) => {
+      console.log(error);
+      state.push(error);
+      return state;
+    });
+  };
 
   useEffect(() => {
+    if (!canvas.current) return;
     // Initialize the GL context
     const gl = canvas.current.getContext('webgl');
 
-    const shaderProgram = initShaderProgram(gl, vertex, fragment);
+    if (!gl) {
+      addError('WebGL not supported');
+      return;
+    }
+    const shaderProgram = initShaderProgram(gl, vertex, fragment, addError);
+    if (!shaderProgram) {
+      addError('Couldn\'t init shader program');
+      return;
+    }
 
-    const programInfo = {
+    const projectionMatrix = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
+    const modelViewMatrix = gl.getUniformLocation(shaderProgram, 'uModelViewMatrix');
+
+    if (!projectionMatrix) {
+      addError('No projectionMatrix location found');
+      return;
+    }
+
+    if (!modelViewMatrix) {
+      addError('No modelViewMatrix location found');
+      return;
+    }
+
+    const programInfo : ProgramInfo = {
       program: shaderProgram,
       attribLocations: {
         vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
         vertexColor: gl.getAttribLocation(shaderProgram, 'aVertexColor'),
       },
       uniformLocations: {
-        projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
-        modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
+        projectionMatrix,
+        modelViewMatrix,
       },
     };
 
     const buffers = initBuffers(gl);
+    if (!buffers) {
+      addError('Buffers Couldn\'t be initiated');
+      return;
+    }
 
     drawScene(gl, programInfo, buffers);
-
-    canvas.current.onclick = ({ offsetX, offsetY }) => {
-      console.log(offsetX);
-      console.log(offsetY);
-    };
-  });
+  }, []);
 
   return (
     <>
@@ -259,6 +316,7 @@ const Home = () => {
         <title>GLSL testing</title>
       </Head>
       <canvas ref={canvas} width="640" height="480" />
+      {errorList.map((error) => <p key={getUnique()}>{error}</p>)}
     </>
   );
 };
