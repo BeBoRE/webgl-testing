@@ -1,9 +1,9 @@
 import Head from 'next/head';
 import GlslCanvas from '../components/GlslCanvas';
-import fragment from '../shaders/fragment.glsl';
+import fragment from '../shaders/wakFragment.glsl';
 import vertex from '../shaders/vertex.glsl';
 
-const Home = () => (
+const Wak = () => (
   <>
     <Head>
       <title>GLSL testing</title>
@@ -12,4 +12,4 @@ const Home = () => (
   </>
 );
 
-export default Home;
+export default Wak;
