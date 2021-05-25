@@ -20,4 +20,6 @@ module.exports = {
   future: {
     webpack5: true,
   },
+  assetPrefix: 'webgl-testing',
+  basePath: 'webgl-testing',
 };
