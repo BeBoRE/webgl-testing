@@ -21,5 +21,4 @@ module.exports = {
     webpack5: true,
   },
   assetPrefix: '/webgl-testing',
-  basePath: '/webgl-testing',
 };
