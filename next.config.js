@@ -17,4 +17,7 @@ module.exports = {
     // Important: return the modified config
     return config;
   },
+  future: {
+    webpack5: true,
+  },
 };
