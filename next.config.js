@@ -1,3 +1,5 @@
+const isDebug = process.env.NODE_ENV !== 'production';
+
 module.exports = {
   webpack: (config) => {
     // Note: we provide webpack above so you should not `require` it
@@ -20,5 +22,6 @@ module.exports = {
   future: {
     webpack5: true,
   },
-  assetPrefix: '/webgl-testing',
+  assetPrefix: !isDebug ? '/webgl-testing' : undefined,
+  basePath: !isDebug ? '/webgl-testing' : undefined,
 };
